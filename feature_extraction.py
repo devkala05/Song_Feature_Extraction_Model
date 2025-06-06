@@ -4,6 +4,7 @@ import os
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+import csv
 
 def extract(file_path):
     try:
@@ -60,19 +61,34 @@ def extract(file_path):
         print(f"Error processing {file}: {e}")
         return None
 
+def write_row_to_csv(row, write_header=False):
+    with open(output_file, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=row.keys())
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
 if __name__ == "__main__":
     folder_path = "/home/devsharma/model/song_web/oufile"
     output_file = "./song_web/song_features.csv"
-    all_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(".mp3")]
 
-    num_workers = min(cpu_count(), 8)
+    if os.path.exists(output_file):
+        existss = pd.read_csv(output_file)
+        already_processed = set(existss['filename'].tolist())
+        write_header = False
+    else:
+        already_processed = set()
+        write_header = True
+        
+    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(".mp3")]
+    left_files = [f for f in files if os.path.basename(f) not in already_processed]
 
-    with Pool(num_workers) as pool:
-        results = list(tqdm(pool.imap_unordered(extract, all_files), total = len(all_files)))
+    print(f"{len(left_files)} files left to process . . .")
+
+    workers = min(cpu_count(), 8)
     
-    results = [res for res in results if res is not None]
-
-    df = pd.DataFrame(results)
-    df.to_csv(output_file, index = False)
-    
-    print(f"all features saved...")
+    with Pool(workers) as pool:
+        for results in tqdm(pool.imap_unordered(extract, left_files), total = len(left_files)):
+            write_row_to_csv(results, write_header)
+            write_header = False
+            
